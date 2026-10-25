@@ -1,0 +1,17 @@
+{
+  "name": "EDTools",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun run --watch server.ts",
+    "listen": "powershell -ExecutionPolicy Bypass -File key_listener.ps1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

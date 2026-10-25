@@ -1,0 +1,7 @@
+bin
+*.js
+!app.js
+area-am.json
+remap-am.json
+test.ts
+.vscode/launch.json

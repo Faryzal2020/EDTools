@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EDTOOLS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="hud-header">
+    <div class="logo-area">
+      <div class="brand-title">
+        <span>EDTools</span>
+        <span class="brand-badge">ODYSSEY 4.2</span>
+      </div>
+      <div id="connection-status" class="connection-pill disconnected">
+        <span class="pulsing-dot"></span>
+        <span id="connection-text">CONNECTING TO COMPANION...</span>
+      </div>
+    </div>
+
+    <!-- Header Toggle Switch (Tabbed Views) -->
+    <nav class="view-tabs">
+      <button id="tab-visualizer" class="tab-btn active" onclick="switchView('visualizer')">
+        <span>⌨️ KEYBOARD VISUALIZER</span>
+      </button>
+      <button id="tab-diagnostic" class="tab-btn" onclick="switchView('diagnostic')">
+        <span>🩺 DIAGNOSTIC & CONFLICTS</span>
+        <span id="fatal-badge-count" class="brand-badge"
+          style="display:none; background: rgba(255, 42, 75, 0.2); border-color: var(--hud-red); color: var(--hud-red);">0</span>
+      </button>
+      <button id="tab-colonize" class="tab-btn" onclick="switchView('colonize')">
+        <span>🪐 COLONISATION SCOUT</span>
+      </button>
+      <button id="tab-settings" class="tab-btn" onclick="switchView('settings')">
+        <span>⚙️ SETTINGS</span>
+      </button>
+    </nav>
+
+    <!-- File Status & Actions -->
+    <div class="file-status-box">
+      <span id="current-file-label" class="file-name-tag">Custom.4.2.binds</span>
+      <input type="file" id="file-input" accept=".binds,.xml" style="display: none;">
+      <button class="btn-hud" onclick="document.getElementById('file-input').click()">
+        📁 LOAD FILE
+      </button>
+      <button class="btn-hud" onclick="loadDefault42Binds()">
+        🔄 RESET 4.2
+      </button>
+    </div>
+  </header>
+
+  <!-- Filter & Control Toolbar -->
+  <div class="control-bar">
+    <div class="filter-group">
+      <span class="filter-label">Active Context:</span>
+      <select id="context-select" class="hud-select" onchange="onContextChanged()">
+        <option value="ALL">All Contexts (Global)</option>
+        <option value="Ship Controls" selected>🚀 Ship Flight & Systems</option>
+        <option value="SRV Controls">🚗 SRV Driving & Turret</option>
+        <option value="On Foot Controls">🚶 On Foot (Odyssey)</option>
+        <option value="General Controls">🖥️ Interface, Menus & Colonisation</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Modifier Filter:</span>
+      <select id="mod-filter-select" class="hud-select" onchange="onModifierFilterChanged()">
+        <option value="ALL">All Chords</option>
+        <option value="NONE">Unmodified (Key Only)</option>
+        <option value="SHIFT">Shift + Key</option>
+        <option value="CTRL">Ctrl + Key</option>
+        <option value="ALT">Alt + Key</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Search Action:</span>
+      <input type="text" id="action-search" class="search-input" placeholder="e.g. Heatsink, Boost, FSD..."
+        oninput="onSearchChanged()">
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Layout:</span>
+      <select id="layout-select" class="hud-select" onchange="onLayoutChanged()">
+        <option value="ANSI-104">Full 104-Key ANSI</option>
+        <option value="TKL-87">Tenkeyless 87-Key</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- VIEW 1: KEYBOARD VISUALIZER -->
+  <main id="view-visualizer">
+    <!-- Active Key Telemetry Banner -->
+    <div id="telemetry-banner" class="telemetry-banner">
+      <div class="telemetry-left">
+        <div id="telemetry-chord" class="key-chord-badge">NO INPUT DETECTED</div>
+        <div class="active-action-info">
+          <div id="telemetry-action-title" class="active-action-title">Press any key in-game or in-browser...</div>
+          <div id="telemetry-action-sub" class="active-action-sub">Live companion stream active via WebSocket</div>
+        </div>
+      </div>
+      <div id="telemetry-contexts" class="telemetry-contexts">
+        <!-- Filled dynamically with context tags -->
+      </div>
+    </div>
+
+    <!-- Scalable Keyboard Layout Frame -->
+    <div class="keyboard-wrapper">
+      <div id="keyboard-frame" class="keyboard-frame">
+        <!-- Main Key Block -->
+        <div class="kb-main-section" id="kb-main-block"></div>
+        <!-- Navigation / Editing Cluster -->
+        <div class="kb-nav-section" id="kb-nav-block"></div>
+        <!-- Numpad Cluster -->
+        <div class="kb-numpad-section" id="kb-numpad-block"></div>
+      </div>
+
+      <!-- Legend Footer -->
+      <div class="legend-bar">
+        <div class="legend-item"><span class="legend-box"
+            style="background:#132235; border-color:var(--hud-cyan);"></span> Has Binding</div>
+        <div class="legend-item"><span class="legend-box" style="background:#ff7100;"></span> Active In-Game Press</div>
+        <div class="legend-item"><span class="legend-box" style="border-color:var(--hud-red);"></span> Fatal Conflict
+        </div>
+        <div class="legend-item"><span class="mod-dot shift"></span> Shift Chord</div>
+        <div class="legend-item"><span class="mod-dot ctrl"></span> Ctrl Chord</div>
+        <div class="legend-item"><span class="mod-dot alt"></span> Alt Chord</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- VIEW 2: DIAGNOSTIC & CONFLICT STUDIO -->
+  <main id="view-diagnostic" class="diagnostic-container hidden">
+    <!-- Metrics Grid -->
+    <div class="metrics-grid">
+      <div class="metric-card orange">
+        <div id="metric-total-bindings" class="metric-val">0</div>
+        <div class="metric-lbl">Total Bound Commands</div>
+        <div class="metric-desc">Primary & secondary keyboard assignments</div>
+      </div>
+      <div class="metric-card red">
+        <div id="metric-fatal-conflicts" class="metric-val">0</div>
+        <div class="metric-lbl">Fatal Conflicts</div>
+        <div class="metric-desc">Same chord clash in identical active game state</div>
+      </div>
+      <div class="metric-card green">
+        <div id="metric-safe-coexistence" class="metric-val">0</div>
+        <div class="metric-lbl">Safe Multi-Context Binds</div>
+        <div class="metric-desc">Permitted shared keys (e.g. Throttle vs Menus)</div>
+      </div>
+      <div class="metric-card cyan">
+        <div id="metric-free-keys" class="metric-val">0</div>
+        <div class="metric-lbl">Completely Free Keys</div>
+        <div class="metric-desc">Standard keys with zero bindings in any mode</div>
+      </div>
+    </div>
+
+    <!-- Diagnostic Sub-Navigation -->
+    <div class="diag-nav">
+      <button id="diag-btn-conflicts" class="diag-tab-btn active" onclick="switchDiagTab('conflicts')">
+        🚨 Fatal Conflicts (<span id="count-fatal-tab">0</span>)
+      </button>
+      <button id="diag-btn-coexistence" class="diag-tab-btn" onclick="switchDiagTab('coexistence')">
+        🟢 Permitted Context Sharing (<span id="count-safe-tab">0</span>)
+      </button>
+      <button id="diag-btn-free" class="diag-tab-btn" onclick="switchDiagTab('free')">
+        🎯 Free Keys Matrix (<span id="count-free-tab">0</span>)
+      </button>
+    </div>
+
+    <!-- Context Explanation Banner -->
+    <div class="explanation-card">
+      <div style="font-size: 20px;">ℹ️</div>
+      <div class="explanation-text">
+        <strong>Context-Aware Conflict Engine:</strong> Elite Dangerous runs in distinct exclusive operational states.
+        Keys like <code style="color:var(--hud-cyan); font-weight:bold;">W</code> and <code
+          style="color:var(--hud-cyan); font-weight:bold;">S</code> being throttle in flight, driving in SRV, walking
+        on-foot, and menu selection are <strong>100% intentional and safe</strong>.
+        Only actions that execute in the <em>same active mode simultaneously</em> (e.g. Landing Gear and Targeting on
+        the same key) are marked as <strong>Fatal Conflicts</strong>.
+      </div>
+    </div>
+
+    <!-- Conflicts List Container -->
+    <div id="diag-content-conflicts" class="conflict-list"></div>
+
+    <!-- Safe Sharing List Container -->
+    <div id="diag-content-coexistence" class="conflict-list hidden"></div>
+
+    <!-- Free Keys Grid Container -->
+    <div id="diag-content-free" class="free-keys-grid hidden"></div>
+  </main>
+
+  <!-- VIEW 3: COLONISATION SYSTEM SCOUT -->
+  <main id="view-colonize" class="colonize-container hidden">
+    <!-- Top Telemetry & Status Bar -->
+    <div class="colonize-telemetry-bar">
+      <div class="telemetry-left">
+        <span id="colonize-live-badge" class="colonize-badge">DETECTING LIVE TELEMETRY...</span>
+        <span class="colonize-subtag">Trailblazers 4.2 Colonisation Candidate Finder</span>
+      </div>
+      <button class="btn-hud-small" onclick="detectLiveLocation()">
+        📍 SYNC CURRENT SYSTEM
+      </button>
+    </div>
+
+    <!-- Filter & Configuration Panel -->
+    <div class="colonize-control-panel">
+      <!-- Row 1: Core Spatial Inputs -->
+      <div class="panel-section">
+        <div class="section-title">1. SPATIAL & EXPLORATION ORIGIN</div>
+        <div class="fields-row">
+          <div class="field-box flex-2">
+            <div class="field-label-row">
+              <label for="colonize-ref-system">Reference Star System:</label>
+              <span id="colonize-ref-coords-badge" class="colonize-coord-badge">COORDINATES: UNRESOLVED</span>
+            </div>
+            <div class="input-with-button">
+              <input type="text" id="colonize-ref-system" class="hud-input"
+                placeholder="e.g. HIP 26722, Sol, Shinrarta Dezhra..." onchange="window.resolveReferenceCoords(false)"
+                onblur="window.resolveReferenceCoords(false)">
+              <button type="button" id="colonize-btn-current" class="btn-hud-small" onclick="window.useCurrentLocation()"
+                title="Select current location of the player as reference system">
+                📍 CURRENT
+              </button>
+              <button type="button" id="colonize-btn-lock" class="btn-hud-small" onclick="window.resolveReferenceCoords(true)"
+                title="Resolve & Lock 3D Coordinates">
+                🔒 LOCK
+              </button>
+            </div>
+          </div>
+
+          <div class="field-box flex-1">
+            <label for="colonize-search-mode">Search Algorithm Mode:</label>
+            <select id="colonize-search-mode" class="hud-select" onchange="onSearchModeChanged()">
+              <option value="concentric_shells" selected>Concentric Shells (15 LY Steps - Recommended)</option>
+              <option value="single_sphere">Single Radius Sphere (0 to Max)</option>
+              <option value="directional_ray">Directional Vector Step (Towards Target)</option>
+            </select>
+          </div>
+
+          <div class="field-box flex-1" id="shell-step-group">
+            <label for="colonize-shell-step">Shell Step Size:</label>
+            <select id="colonize-shell-step" class="hud-select">
+              <option value="15" selected>15 LY (Game Beacon Legal Limit)</option>
+              <option value="20">20 LY (Standard Hop)</option>
+              <option value="30">30 LY (Wide Shell)</option>
+            </select>
+          </div>
+
+          <div class="field-box flex-1" id="max-audited-group">
+            <label for="colonize-max-audited">Max Systems to Audit:</label>
+            <input type="number" id="colonize-max-audited" class="hud-input" min="10" max="1000" step="10" value="100"
+              title="Maximum candidate systems to evaluate (default 100)">
+          </div>
+
+          <div class="field-box flex-1" id="target-system-group" style="display: none;">
+            <label for="colonize-target-system">Target Heading Destination:</label>
+            <input type="text" id="colonize-target-system" class="hud-input" placeholder="e.g. Colonia, Sag A*...">
+          </div>
+        </div>
+
+        <div class="fields-row slider-row">
+          <div class="field-box flex-grow">
+            <div class="slider-header">
+              <label for="colonize-max-distance">Maximum Scout Radius from Reference (LY):</label>
+              <div class="distance-inputs-group">
+                <input type="number" id="colonize-dist-number" class="hud-input-number" min="5" max="2000" value="100"
+                  oninput="onColonizeDistNumberChange()">
+                <div class="preset-pills">
+                  <button type="button" class="pill-btn" onclick="setColonizeDistance(15)">15 LY</button>
+                  <button type="button" class="pill-btn" onclick="setColonizeDistance(50)">50 LY</button>
+                  <button type="button" class="pill-btn active" onclick="setColonizeDistance(100)">100 LY</button>
+                  <button type="button" class="pill-btn" onclick="setColonizeDistance(500)">500 LY</button>
+                  <button type="button" class="pill-btn" onclick="setColonizeDistance(1000)">1000 LY</button>
+                </div>
+              </div>
+            </div>
+            <input type="range" id="colonize-max-distance" class="hud-slider" min="5" max="2000" step="5" value="100"
+              oninput="onColonizeDistSliderChange()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: Celestial Bodies & Economic Filters -->
+      <div class="panel-section">
+        <div class="section-title">2. PLANETARY & RESOURCE CRITERIA</div>
+        <div class="criteria-grid">
+          <!-- Landable Planets Filter -->
+          <div class="crit-card">
+            <div class="crit-header">
+              <label class="toggle-container">
+                <input type="checkbox" id="colonize-require-landable" checked>
+                <span class="toggle-custom"></span>
+                <span class="crit-title">🪐 Landable Planets Required</span>
+              </label>
+            </div>
+            <div class="crit-body">
+              <span class="crit-label">Min Landable Count:</span>
+              <input type="number" id="colonize-min-landable" class="hud-input-number" min="1" max="10" value="1">
+            </div>
+          </div>
+
+          <!-- Rings & Asteroid Belts Filter -->
+          <div class="crit-card">
+            <div class="crit-header">
+              <label class="toggle-container">
+                <input type="checkbox" id="colonize-require-rings" checked>
+                <span class="toggle-custom"></span>
+                <span class="crit-title">💍 Planetary Rings / Belts</span>
+              </label>
+            </div>
+            <div class="crit-body double">
+              <div>
+                <span class="crit-label">Ring Type:</span>
+                <select id="colonize-ring-type" class="hud-select-sm">
+                  <option value="any" selected>Any Ring Type</option>
+                  <option value="Metallic">Metallic (Painite / Platinum)</option>
+                  <option value="Icy">Icy (Tritium / Water)</option>
+                  <option value="Metal Rich">Metal Rich</option>
+                  <option value="Rocky">Rocky</option>
+                </select>
+              </div>
+              <div>
+                <span class="crit-label">Reserve Level:</span>
+                <select id="colonize-ring-reserve" class="hud-select-sm">
+                  <option value="any" selected>Any Reserve</option>
+                  <option value="Pristine">Pristine (Highest Yield)</option>
+                  <option value="Major">Major</option>
+                  <option value="Common">Common</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Star & Value Filters -->
+          <div class="crit-card">
+            <div class="crit-header">
+              <label class="toggle-container">
+                <input type="checkbox" id="colonize-require-scoopable" checked>
+                <span class="toggle-custom"></span>
+                <span class="crit-title">☀️ Scoopable Star (KGBFOAM)</span>
+              </label>
+            </div>
+            <div class="crit-body">
+              <label class="toggle-container" style="margin-top: 4px;">
+                <input type="checkbox" id="colonize-require-valuable">
+                <span class="toggle-custom"></span>
+                <span class="crit-label" style="margin-left: 8px;">Require ELW / Water World / Terraformable</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Black Hole Filter -->
+          <div class="crit-card">
+            <div class="crit-header">
+              <label class="toggle-container">
+                <input type="checkbox" id="colonize-require-black-hole">
+                <span class="toggle-custom"></span>
+                <span class="crit-title">🕳️ Black Hole Required</span>
+              </label>
+            </div>
+            <div class="crit-desc">
+              Must contain at least one Black Hole in any orbital position.
+            </div>
+          </div>
+
+          <!-- Data Integrity & Audit Filter -->
+          <div class="crit-card highlight">
+            <div class="crit-header">
+              <label class="toggle-container">
+                <input type="checkbox" id="colonize-validate-edsm" checked>
+                <span class="toggle-custom"></span>
+                <span class="crit-title">🛡️ Strict Multi-API Verification</span>
+              </label>
+            </div>
+            <div class="crit-desc">
+              Cross-checks candidates with EDSM & Spansh to eliminate false positives (hidden outposts, permit locks,
+              and active construction vessels).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions Bar -->
+      <div class="scout-actions-bar">
+        <button id="colonize-launch-btn" class="btn-launch-scout" onclick="startColonizeScout()">
+          🚀 LAUNCH SCOUT SCAN
+        </button>
+        <button id="colonize-cancel-btn" class="btn-cancel-scout" style="display: none;"
+          onclick="cancelColonizeScout()">
+          ⏹️ ABORT SCAN
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Real-Time Progress Card -->
+    <div id="colonize-progress-card" class="progress-card" style="display: none;">
+      <div class="progress-top">
+        <div class="pulse-indicator"></div>
+        <div class="progress-info">
+          <div id="colonize-status-text" class="status-main">Initiating scout mission...</div>
+          <div id="colonize-sub-status" class="status-sub">ACTIVE STAGE: SPATIAL SECTOR SEARCH</div>
+        </div>
+        <div class="match-counter-box">
+          <span id="colonize-match-count" class="counter-num">0</span>
+          <span class="counter-label">MATCHES</span>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div id="colonize-progress-bar" class="progress-fill" style="width: 0%;"></div>
+      </div>
+
+      <!-- Live Diagnostic & Audit Stream -->
+      <div class="audit-console-container">
+        <div class="audit-console-header">
+          <div class="audit-header-left">
+            <span>📡 REAL-TIME AUDIT LOG</span>
+          </div>
+          <div class="audit-header-right">
+            <span id="audit-stats-tag" class="audit-stats">AUDITED: 0 | MATCHES: 0</span>
+            <button type="button" id="colonize-copy-audit-btn" class="btn-copy-audit"
+              onclick="window.copyAuditLogToClipboard()" title="Copy entire audit log with timestamps">
+              📋 COPY LOG
+            </button>
+          </div>
+        </div>
+        <div id="colonize-audit-log" class="audit-log-stream"></div>
+      </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-header">
+      <div class="results-title">
+        <span>VERIFIED COLONISABLE SYSTEMS</span>
+        <span id="colonize-results-total" class="results-badge">0 FOUND</span>
+      </div>
+    </div>
+
+    <!-- Results Cards Grid -->
+    <div id="colonize-results-container" class="results-grid">
+      <div class="empty-state-hud">
+        <div style="font-size: 32px; margin-bottom: 8px;">🪐</div>
+        <div style="font-size: 16px; font-weight: 700; color: var(--hud-orange);">READY FOR SCOUT MISSION</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Choose your criteria and launch the
+          scout scan to discover unclaimed systems.</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- VIEW 4: SETTINGS & INTEGRATIONS -->
+  <main id="view-settings" class="settings-container hidden">
+    <!-- Top Hub Banner -->
+    <div class="settings-hub-banner">
+      <div class="hub-header-left">
+        <div class="hub-title-row">
+          <span class="hub-icon">⚙️</span>
+          <div>
+            <h1 class="hub-title">INTEGRATIONS &amp; AUTHORIZATION HUB</h1>
+            <p class="hub-subtitle">
+              Connect official Frontier server accounts and community APIs to unlock real-time Commander telemetry, 
+              flight logs, engineer unlocks, and galaxy-wide synchronization.
+            </p>
+          </div>
+        </div>
+
+        <!-- Live Status Chips Row -->
+        <div class="hub-status-row">
+          <div id="hub-status-frontier" class="status-chip checking" title="Frontier CAPI / Local Journal State">
+            <span class="chip-dot"></span>
+            <span class="chip-label">FRONTIER:</span>
+            <span class="chip-val">CHECKING...</span>
+          </div>
+          <div id="hub-status-inara" class="status-chip checking" title="Inara.cz API Integration">
+            <span class="chip-dot"></span>
+            <span class="chip-label">INARA:</span>
+            <span class="chip-val">UNCONFIGURED</span>
+          </div>
+          <div id="hub-status-edsm" class="status-chip checking" title="EDSM.net Star Map Integration">
+            <span class="chip-dot"></span>
+            <span class="chip-label">EDSM:</span>
+            <span class="chip-val">UNCONFIGURED</span>
+          </div>
+          <div id="hub-status-spansh" class="status-chip checking" title="Spansh.co.uk Route Planning API">
+            <span class="chip-dot"></span>
+            <span class="chip-label">SPANSH:</span>
+            <span class="chip-val">UNCONFIGURED</span>
+          </div>
+          <div id="hub-status-eddn" class="status-chip active" title="EDDN Community Data Network">
+            <span class="chip-dot"></span>
+            <span class="chip-label">EDDN:</span>
+            <span class="chip-val">ACTIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="hub-header-actions">
+        <button type="button" id="btn-auto-detect-cmdr" class="btn-hud-action" onclick="window.detectCommanderFromJournal()"
+          title="Detect Commander name and status automatically from local game logs">
+          📍 AUTO-DETECT FROM GAME
+        </button>
+        <button type="button" id="btn-test-all-connections" class="btn-hud-action secondary" onclick="window.testAllConnections()"
+          title="Test all configured API credentials simultaneously">
+          🔄 TEST ALL CONNECTIONS
+        </button>
+        <button type="button" id="btn-save-settings" class="btn-hud-action primary" onclick="window.saveAllSettings()"
+          title="Save all configuration to local server">
+          💾 SAVE ALL SETTINGS
+        </button>
+      </div>
+    </div>
+
+    <!-- Settings Grid -->
+    <div class="settings-grid">
+      <!-- Card 1: Commander Identity & Game Environment -->
+      <div class="settings-card highlight">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">👨‍🚀</span>
+            <div>
+              <div class="card-title">COMMANDER IDENTITY &amp; LOCAL JOURNAL</div>
+              <div class="card-subtitle">Local game client logs provide instant, zero-configuration telemetry</div>
+            </div>
+          </div>
+          <span class="card-badge green">DIRECT LOG ACCESS</span>
+        </div>
+
+        <div class="card-body">
+          <div class="fields-row">
+            <div class="field-box flex-2">
+              <label for="settings-cmdr-name">Commander Name (CMDR):</label>
+              <input type="text" id="settings-cmdr-name" class="hud-input" placeholder="e.g. Jameson, Farlander..."
+                oninput="window.onCommanderNameChange()">
+            </div>
+            <div class="field-box flex-1">
+              <label for="settings-cmdr-fid">Frontier FID (Account ID):</label>
+              <input type="text" id="settings-cmdr-fid" class="hud-input" placeholder="e.g. F1234567" readonly>
+            </div>
+          </div>
+
+          <div class="field-box" style="margin-top: 12px;">
+            <label for="settings-journal-dir">
+              Local Journal Log Directory (Optional Override):
+            </label>
+            <input type="text" id="settings-journal-dir" class="hud-input"
+              placeholder="Default: %USERPROFILE%\Saved Games\Frontier Developments\Elite Dangerous">
+          </div>
+
+          <!-- Live Telemetry Status Banner -->
+          <div id="cmdr-telemetry-box" class="telemetry-box empty" style="margin-top: 14px;">
+            <div class="telemetry-box-header">
+              <span class="box-status-tag">GAME TELEMETRY</span>
+              <span id="cmdr-journal-file" class="box-file-tag">No journal read yet</span>
+            </div>
+            <div id="cmdr-telemetry-details" class="telemetry-details-grid">
+              <div class="telemetry-item"><span class="lbl">Active Ship:</span><span id="stat-ship" class="val">--</span></div>
+              <div class="telemetry-item"><span class="lbl">Ship Name:</span><span id="stat-ship-name" class="val">--</span></div>
+              <div class="telemetry-item"><span class="lbl">Credit Balance:</span><span id="stat-credits" class="val">--</span></div>
+              <div class="telemetry-item"><span class="lbl">Game Mode:</span><span id="stat-mode" class="val">--</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: Frontier Developments (CAPI & Journal) -->
+      <div class="settings-card highlight-orange">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">🚀</span>
+            <div>
+              <div class="card-title">FRONTIER DEVELOPMENTS (CAPI / SSO)</div>
+              <div class="card-subtitle">Official server data: loadouts, docked station market, and fleet carrier</div>
+            </div>
+          </div>
+          <span id="frontier-auth-badge" class="card-badge orange">OFFICIAL FRONTIER</span>
+        </div>
+
+        <div class="card-body">
+          <div class="benefits-summary">
+            <div class="benefit-item">✔️ Live server balance, loans, and permits</div>
+            <div class="benefit-item">✔️ Current ship module engineering stats</div>
+            <div class="benefit-item">✔️ Docked station commodity prices &amp; shipyard</div>
+            <div class="benefit-item">✔️ Fleet Carrier fuel, bank reserve &amp; jump status</div>
+          </div>
+
+          <!-- Frontier Browser SSO Launch Box -->
+          <div class="sso-launch-box">
+            <div class="sso-box-header">
+              <span class="sso-title">BROWSER SINGLE SIGN-ON (SSO)</span>
+              <span id="frontier-sso-status-pill" class="status-pill unlinked">NOT LINKED</span>
+            </div>
+            <p class="sso-desc">
+              Open Frontier's official authorization page in your browser. Log in securely using Frontier Store, Steam, Epic Games, PlayStation, or Xbox credentials to link your commander account.
+            </p>
+            <div class="sso-btn-group">
+              <button type="button" id="btn-frontier-sso-login" class="btn-sso-login" onclick="window.loginWithFrontier()">
+                <span class="sso-icon">🌐</span>
+                <span>LOGIN &amp; AUTHORIZE VIA FRONTIER</span>
+              </button>
+              <button type="button" id="btn-frontier-disconnect" class="btn-hud-danger" style="display: none;" onclick="window.disconnectFrontier()">
+                ❌ DISCONNECT
+              </button>
+            </div>
+          </div>
+
+          <!-- Connected Live CAPI Status Card (Shown when connected) -->
+          <div id="frontier-connected-card" class="frontier-connected-box" style="display: none;">
+            <div class="conn-header">
+              <span class="conn-title">🔗 ACTIVE FRONTIER CAPI SESSION</span>
+              <span id="frontier-token-expiry" class="conn-expiry">Token Valid</span>
+            </div>
+            <div class="conn-grid">
+              <div class="conn-item"><span class="lbl">CMDR Name:</span><span id="capi-cmdr-name" class="val">--</span></div>
+              <div class="conn-item"><span class="lbl">Account Balance:</span><span id="capi-credits" class="val">--</span></div>
+              <div class="conn-item"><span class="lbl">Active Ship:</span><span id="capi-ship" class="val">--</span></div>
+              <div class="conn-item"><span class="lbl">Current Station / System:</span><span id="capi-location" class="val">--</span></div>
+            </div>
+          </div>
+
+          <!-- Advanced / Manual Settings Accordion -->
+          <details class="guide-accordion" style="margin-top: 14px;">
+            <summary class="guide-summary">
+              <span>⚙️ Advanced CAPI &amp; OAuth Parameters</span>
+              <span class="arrow">▼</span>
+            </summary>
+            <div class="guide-content">
+              <div class="field-box">
+                <label for="settings-frontier-mode">Active Connection Mechanism:</label>
+                <select id="settings-frontier-mode" class="hud-select" onchange="window.onFrontierModeChange()">
+                  <option value="capi" selected>Frontier Companion API (Browser SSO / OAuth2 Token)</option>
+                  <option value="journal">Direct Local Journal (Zero-setup, Local PC Fallback)</option>
+                </select>
+              </div>
+
+              <div class="field-box" style="margin-top: 10px;">
+                <label for="settings-frontier-client-id">Frontier OAuth Client ID:</label>
+                <input type="text" id="settings-frontier-client-id" class="hud-input" 
+                  placeholder="e.g. registered UUID from user.frontierstore.net/developer">
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block; line-height: 1.4;">
+                  Frontier requires an official registered Client ID. Register one for free at <a href="https://user.frontierstore.net/developer" target="_blank" style="color: var(--color-cyan); text-decoration: underline;">user.frontierstore.net/developer</a> with Redirect URI: <code>http://localhost:3000/auth/frontier/callback</code>. (Or use <strong>Direct Local Journal</strong> mode above with zero setup).
+                </small>
+              </div>
+
+              <div class="field-box" style="margin-top: 10px;">
+                <label for="settings-frontier-token">Manual Bearer Token Override (Optional):</label>
+                <div class="input-with-eye">
+                  <input type="password" id="settings-frontier-token" class="hud-input" placeholder="Paste raw bearer token if available...">
+                  <button type="button" class="btn-eye-toggle" onclick="window.toggleKeyVisibility('settings-frontier-token')">👁️</button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="card-actions-row">
+            <button type="button" id="btn-verify-frontier" class="btn-hud-action secondary" onclick="window.testFrontierConnection()">
+              ⚡ VERIFY &amp; SYNC TELEMETRY
+            </button>
+          </div>
+
+          <div id="frontier-verify-result" class="verify-result-box hidden"></div>
+        </div>
+      </div>
+
+      <!-- Card 3: Inara.cz -->
+      <div class="settings-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">🌐</span>
+            <div>
+              <div class="card-title">INARA (INARA.CZ)</div>
+              <div class="card-subtitle">Sync commander profile, squadron, engineers, and community goals</div>
+            </div>
+          </div>
+          <span class="card-badge cyan">COMMUNITY PORTAL</span>
+        </div>
+
+        <div class="card-body">
+          <div class="benefits-summary">
+            <div class="benefit-item">✔️ Commander profile, ranks, allegiance &amp; squadron role</div>
+            <div class="benefit-item">✔️ Engineer unlock progress &amp; pinned blueprints</div>
+            <div class="benefit-item">✔️ Community Goals participation &amp; reward tier tracking</div>
+            <div class="benefit-item">✔️ Synchronize fleet and materials inventory</div>
+          </div>
+
+          <!-- How to get API key accordion -->
+          <details class="guide-accordion">
+            <summary class="guide-summary">
+              <span>ℹ️ How to obtain your Inara Personal API Key</span>
+              <span class="arrow">▼</span>
+            </summary>
+            <div class="guide-content">
+              <ol>
+                <li>Log in to your account at <a href="https://inara.cz" target="_blank" rel="noopener">Inara.cz</a>.</li>
+                <li>Click on your <strong>Commander Profile</strong> at the top right.</li>
+                <li>Go to <strong>Settings</strong> &gt; <strong>API</strong> (or visit <a href="https://inara.cz/settings-api/" target="_blank" rel="noopener">inara.cz/settings-api/</a>).</li>
+                <li>Click <strong>Generate personal API key</strong> and copy it into the field below.</li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="field-box" style="margin-top: 12px;">
+            <label for="settings-inara-key">Inara Personal API Key:</label>
+            <div class="input-with-eye">
+              <input type="password" id="settings-inara-key" class="hud-input" placeholder="Paste your Inara API key here...">
+              <button type="button" class="btn-eye-toggle" onclick="window.toggleKeyVisibility('settings-inara-key')">👁️</button>
+            </div>
+          </div>
+
+          <div class="fields-row" style="margin-top: 10px;">
+            <div class="field-box flex-1">
+              <label for="settings-inara-appname">Application Identifier:</label>
+              <input type="text" id="settings-inara-appname" class="hud-input" value="EDTools" placeholder="EDTools">
+            </div>
+            <div class="field-box flex-1">
+              <label for="settings-inara-appversion">App Version:</label>
+              <input type="text" id="settings-inara-appversion" class="hud-input" value="4.2" placeholder="4.2">
+            </div>
+          </div>
+
+          <div class="toggle-row" style="margin-top: 10px;">
+            <label class="toggle-container">
+              <input type="checkbox" id="settings-inara-isdev">
+              <span class="toggle-custom"></span>
+              <span class="toggle-label">Development Sandbox Mode (isBeingDeveloped)</span>
+            </label>
+          </div>
+
+          <div class="card-actions-row">
+            <button type="button" id="btn-verify-inara" class="btn-hud-action secondary" onclick="window.testInaraConnection()">
+              ⚡ TEST &amp; VERIFY INARA
+            </button>
+          </div>
+
+          <div id="inara-verify-result" class="verify-result-box hidden"></div>
+        </div>
+      </div>
+
+      <!-- Card 4: EDSM (edsm.net) -->
+      <div class="settings-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">🗺️</span>
+            <div>
+              <div class="card-title">EDSM (ELITE DANGEROUS STAR MAP)</div>
+              <div class="card-subtitle">Flight logs, exploration first discoveries, and galaxy position</div>
+            </div>
+          </div>
+          <span class="card-badge cyan">EXPLORATION LOGBOOK</span>
+        </div>
+
+        <div class="card-body">
+          <div class="benefits-summary">
+            <div class="benefit-item">✔️ Private flight logs &amp; complete galactic jump history</div>
+            <div class="benefit-item">✔️ Personal first discoveries &amp; exploration statistics</div>
+            <div class="benefit-item">✔️ Real-time galaxy coordinates &amp; last known location</div>
+            <div class="benefit-item">✔️ Personal ship fleet catalog and materials sync</div>
+          </div>
+
+          <!-- How to get API key accordion -->
+          <details class="guide-accordion">
+            <summary class="guide-summary">
+              <span>ℹ️ How to obtain your EDSM API Key</span>
+              <span class="arrow">▼</span>
+            </summary>
+            <div class="guide-content">
+              <ol>
+                <li>Log in to your account at <a href="https://www.edsm.net" target="_blank" rel="noopener">EDSM.net</a>.</li>
+                <li>Go to <strong>My Account</strong> &gt; <strong>API Key</strong>.</li>
+                <li>Generate or copy your personal <strong>API Key</strong> and paste it below.</li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="field-box" style="margin-top: 12px;">
+            <label for="settings-edsm-key">EDSM API Key:</label>
+            <div class="input-with-eye">
+              <input type="password" id="settings-edsm-key" class="hud-input" placeholder="Paste your EDSM API key here...">
+              <button type="button" class="btn-eye-toggle" onclick="window.toggleKeyVisibility('settings-edsm-key')">👁️</button>
+            </div>
+          </div>
+
+          <div class="card-actions-row">
+            <button type="button" id="btn-verify-edsm" class="btn-hud-action secondary" onclick="window.testEdsmConnection()">
+              ⚡ TEST &amp; VERIFY EDSM
+            </button>
+          </div>
+
+          <div id="edsm-verify-result" class="verify-result-box hidden"></div>
+        </div>
+      </div>
+
+      <!-- Card 5: Spansh (spansh.co.uk) & EDDN Community -->
+      <div class="settings-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">⚡</span>
+            <div>
+              <div class="card-title">SPANSH &amp; EDDN COMMUNITY NETWORK</div>
+              <div class="card-subtitle">Saved neutron plots, fleet carrier itineraries, and community firehose</div>
+            </div>
+          </div>
+          <span class="card-badge orange">ROUTING &amp; NETWORK</span>
+        </div>
+
+        <div class="card-body">
+          <div class="benefits-summary">
+            <div class="benefit-item">✔️ <strong>Spansh</strong>: Custom saved neutron routes &amp; Fleet Carrier jump schedules</div>
+            <div class="benefit-item">✔️ <strong>Spansh</strong>: Priority processing queue for colonisation &amp; route calculations</div>
+            <div class="benefit-item">✔️ <strong>EDDN</strong>: Crowdsourced galaxy-wide market prices, outfitting stock, and scans</div>
+          </div>
+
+          <div class="field-box" style="margin-top: 12px;">
+            <label for="settings-spansh-key">Spansh User API / Session Token (Optional):</label>
+            <div class="input-with-eye">
+              <input type="password" id="settings-spansh-key" class="hud-input" placeholder="Optional Spansh session token...">
+              <button type="button" class="btn-eye-toggle" onclick="window.toggleKeyVisibility('settings-spansh-key')">👁️</button>
+            </div>
+          </div>
+
+          <div class="toggle-row" style="margin-top: 14px;">
+            <label class="toggle-container">
+              <input type="checkbox" id="settings-eddn-enabled" checked>
+              <span class="toggle-custom"></span>
+              <span class="toggle-label">Contribute live data to EDDN (Elite Dangerous Data Network)</span>
+            </label>
+          </div>
+
+          <div class="field-box" style="margin-top: 8px;">
+            <label for="settings-eddn-uploader">EDDN Uploader Identifier:</label>
+            <input type="text" id="settings-eddn-uploader" class="hud-input" value="EDTools_Odyssey" placeholder="EDTools_Odyssey">
+          </div>
+
+          <div class="card-actions-row">
+            <button type="button" id="btn-verify-spansh" class="btn-hud-action secondary" onclick="window.testSpanshConnection()">
+              ⚡ VERIFY SPANSH API
+            </button>
+          </div>
+
+          <div id="spansh-verify-result" class="verify-result-box hidden"></div>
+        </div>
+      </div>
+
+      <!-- Card 6: Third-Party Ecosystem Matrix Reference -->
+      <div class="settings-card full-width">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">📚</span>
+            <div>
+              <div class="card-title">ELITE DANGEROUS THIRD-PARTY AUTHORIZATION MATRIX</div>
+              <div class="card-subtitle">Overview of services and capabilities unlocked through credentials</div>
+            </div>
+          </div>
+          <span class="card-badge cyan">ECOSYSTEM AUDIT</span>
+        </div>
+
+        <div class="card-body">
+          <div class="matrix-table-wrapper">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th>SERVICE / PLATFORM</th>
+                  <th>CREDENTIAL TYPE</th>
+                  <th>DATA &amp; FEATURES UNLOCKED</th>
+                  <th>STATUS IN EDTOOLS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Frontier CAPI / Journal</strong></td>
+                  <td>OAuth2 / Local Game File</td>
+                  <td>Server-authoritative credits, loadouts, carrier finances, and station market where docked</td>
+                  <td><span class="table-badge active">Direct Log + CAPI Ready</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Inara.cz</strong></td>
+                  <td>Personal API Key</td>
+                  <td>Commander ranks, squadron membership, engineer progress &amp; pinned blueprints, community goals</td>
+                  <td><span class="table-badge active">Integrated API Client</span></td>
+                </tr>
+                <tr>
+                  <td><strong>EDSM.net</strong></td>
+                  <td>Personal API Key</td>
+                  <td>Flight logs, first discoveries, galaxy coordinates, exploration rank &amp; personal ship list</td>
+                  <td><span class="table-badge active">Integrated API Client</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Spansh.co.uk</strong></td>
+                  <td>API / User Token</td>
+                  <td>Saved neutron highway plots, fleet carrier itineraries, priority route calculation queue</td>
+                  <td><span class="table-badge active">Route Engine + Token</span></td>
+                </tr>
+                <tr>
+                  <td><strong>EDDN (ZeroMQ)</strong></td>
+                  <td>Soft-Auth / Uploader ID</td>
+                  <td>Broadcasting live market, shipyard, and exploration telemetry to the global firehose</td>
+                  <td><span class="table-badge active">Uploader Ready</span></td>
+                </tr>
+                <tr>
+                  <td><strong>EDSY &amp; Coriolis</strong></td>
+                  <td>Loadout Export Format</td>
+                  <td>Export current ship loadouts for ship theorycrafting, power analysis, and engineering builds</td>
+                  <td><span class="table-badge secondary">Export Compatible</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 7: Backup & Configuration Management -->
+      <div class="settings-card full-width">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">💾</span>
+            <div>
+              <div class="card-title">CONFIGURATION BACKUP &amp; MANAGEMENT</div>
+              <div class="card-subtitle">Export or import your credentials securely across machines</div>
+            </div>
+          </div>
+          <span class="card-badge">PERSISTENCE</span>
+        </div>
+
+        <div class="card-body">
+          <div class="backup-actions-row">
+            <button type="button" class="btn-hud" onclick="window.exportSettings()">
+              📥 EXPORT CONFIGURATION (JSON)
+            </button>
+            <input type="file" id="settings-file-input" accept=".json" style="display: none;" onchange="window.importSettings(event)">
+            <button type="button" class="btn-hud" onclick="document.getElementById('settings-file-input').click()">
+              📤 IMPORT CONFIGURATION (JSON)
+            </button>
+            <button type="button" class="btn-hud-danger" onclick="window.resetSettingsToDefaults()">
+              🗑️ RESET TO DEFAULTS
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="settings-toast" class="hud-toast hidden"></div>
+
+  <script src="app.js"></script>
+  <script src="colonize.js"></script>
+  <script src="settings.js"></script>
+</body>
+
+</html>
